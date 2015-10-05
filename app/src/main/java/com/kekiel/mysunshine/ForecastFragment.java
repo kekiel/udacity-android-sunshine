@@ -1,7 +1,11 @@
 package com.kekiel.mysunshine;
 
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.preference.PreferenceManager;
 import android.support.v4.app.Fragment;
 import android.os.Bundle;
 import android.text.format.Time;
@@ -12,8 +16,10 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -46,23 +52,25 @@ public class ForecastFragment extends Fragment {
                              Bundle savedInstanceState) {
         View fragmentView = inflater.inflate(R.layout.fragment_main, container, false);
 
-        String[] forecastDummy = new String[]{
-                "Heavy clouds - 01",
-                "But no rain - 02",
-                "Weather today - 03",
-                "In fact, there will be - 04"
-        };
-
-        ArrayList<String> forecastStrings = new ArrayList<>(Arrays.asList(forecastDummy));
-
         weatherAdapter = new ArrayAdapter<String>(
                 getActivity(),
                 R.layout.list_item_forecast,
                 R.id.list_item_forecast_textview,
-                forecastStrings);
+                new ArrayList<String>());
 
         ListView weatherListView = (ListView) fragmentView.findViewById(R.id.listview_forecast);
         weatherListView.setAdapter(weatherAdapter);
+
+        weatherListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                String forecastString = weatherAdapter.getItem(position).toString();
+                Intent detailIntent = new Intent(getContext(),DetailActivity.class);
+                detailIntent.putExtra(Intent.EXTRA_TEXT, forecastString);
+                startActivity(detailIntent);
+
+            }
+        });
 
         return fragmentView;
     }
@@ -87,12 +95,25 @@ public class ForecastFragment extends Fragment {
         int id = item.getItemId();
 
         if (id == R.id.action_refresh) {
-            ForecastFragment.FetchWeatherTask fetchWeatherTask = new FetchWeatherTask();
-            fetchWeatherTask.execute("Buende");
-
+            updateWeather();
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        updateWeather();
+    }
+
+    private void updateWeather() {
+        // get Location from shared preferences
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(getContext());
+        String location = settings.getString(getString(R.string.pref_location_key), getString(R.string.pref_default_location));
+
+        FetchWeatherTask fetchWeatherTask = new FetchWeatherTask();
+        fetchWeatherTask.execute(location);
     }
 
     public class FetchWeatherTask extends AsyncTask<String, Void, String[]> {
@@ -115,8 +136,11 @@ public class ForecastFragment extends Fragment {
             String forecastJsonStr = null;
 
             String format = "json";
-            String units = "metric";
             int numDays = 7;
+
+            // get Unit from shared preferences
+            SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(getContext());
+            String units = settings.getString(getString(R.string.pref_units_key), getString(R.string.pref_default_units));
 
             try {
                 // Construct the URL for the OpenWeatherMap query
@@ -187,7 +211,7 @@ public class ForecastFragment extends Fragment {
             String[] returnArray = null;
 
             try {
-                returnArray = getWeatherDataFromJson(forecastJsonStr, numDays);
+                returnArray = getWeatherDataFromJson(forecastJsonStr, numDays, units);
             } catch (JSONException e) {
                 e.printStackTrace();
             }
@@ -224,7 +248,7 @@ public class ForecastFragment extends Fragment {
          * Fortunately parsing is easy:  constructor takes the JSON string and converts it
          * into an Object hierarchy for us.
          */
-        private String[] getWeatherDataFromJson(String forecastJsonStr, int numDays)
+        private String[] getWeatherDataFromJson(String forecastJsonStr, int numDays, String units)
                 throws JSONException {
 
             // These are the names of the JSON objects that need to be extracted.
@@ -261,6 +285,7 @@ public class ForecastFragment extends Fragment {
                 String day;
                 String description;
                 String highAndLow;
+                String unitString = "Celsius";
 
                 // Get the JSON object representing the day
                 JSONObject dayForecast = weatherArray.getJSONObject(i);
@@ -282,13 +307,22 @@ public class ForecastFragment extends Fragment {
                 JSONObject temperatureObject = dayForecast.getJSONObject(OWM_TEMPERATURE);
                 double high = temperatureObject.getDouble(OWM_MAX);
                 double low = temperatureObject.getDouble(OWM_MIN);
+                if (units.equals("imperial")) {
+                    high = celsiusToFahrenheit(high);
+                    low = celsiusToFahrenheit(low);
+                    unitString = "Fahrenheit";
+                }
 
                 highAndLow = formatHighLows(high, low);
-                resultStrs[i] = day + " - " + description + " - " + highAndLow;
+                resultStrs[i] = day + " - " + description + " - " + highAndLow + " " + unitString;
             }
 
             return resultStrs;
 
+        }
+
+        private double celsiusToFahrenheit(double degreesCelsius) {
+            return degreesCelsius * 1.8 + 32;
         }
 
 
