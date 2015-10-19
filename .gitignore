@@ -36,3 +36,6 @@ proguard/
 
 # Windows files
 Thumbs.db
+
+# personal api key
+api_key.xml
